@@ -1,0 +1,5 @@
+platform: aws
+base:
+  from: ami-08e2d37b6a0129927
+  run:
+  - echo "hello" > /var/lib/foo
