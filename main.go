@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tmlbl/rem/config"
 	"github.com/tmlbl/rem/provision"
+	"github.com/tmlbl/rem/storage"
 )
 
 const appName = "rem"
@@ -33,7 +34,16 @@ func main() {
 				return err
 			}
 
-			return provisioner.Build(&cfg.Base)
+			state, err := provisioner.Build(&cfg.Base)
+			if err != nil {
+				return err
+			}
+
+			db := storage.Default()
+
+			fmt.Println(state)
+
+			return db.SaveState(defaultConfigPath(), state)
 		},
 	}
 

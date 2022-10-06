@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -10,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/tmlbl/rem/config"
+	"github.com/tmlbl/rem/storage"
 )
 
 type Provisioner struct{}
@@ -85,22 +87,22 @@ func (p *Provisioner) ensureSecurityGroup(ctx context.Context, svc *ec2.Client) 
 	}
 }
 
-func (p *Provisioner) Build(base *config.Base) error {
+func (p *Provisioner) Build(base *config.Base) (*storage.State, error) {
 	cfg, err := awsconfig.LoadDefaultConfig(context.Background())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	svc := ec2.NewFromConfig(cfg)
 
 	ami, err := p.getAMI(base, svc)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Get the security group ID
 	sid, err := p.ensureSecurityGroup(context.Background(), svc)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Start the build instance
@@ -111,10 +113,14 @@ func (p *Provisioner) Build(base *config.Base) error {
 		SecurityGroupIds: []string{sid},
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	fmt.Println("started instance", *out.Instances[0].InstanceId)
+	inst := out.Instances[0]
 
-	return nil
+	return &storage.State{
+		InstanceID:  *inst.InstanceId,
+		BaseImageID: *inst.ImageId,
+		IP:          net.ParseIP(*inst.PublicIpAddress),
+	}, nil
 }
