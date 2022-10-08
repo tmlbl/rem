@@ -137,6 +137,8 @@ func (p *Provisioner) Build(base *config.Base) (*storage.State, error) {
 	// Wait for public IP to be available
 	start := time.Now()
 	for {
+		time.Sleep(time.Second * 3)
+
 		stat, err := svc.DescribeInstances(context.Background(),
 			&ec2.DescribeInstancesInput{
 				InstanceIds: []string{*inst.InstanceId},
@@ -144,7 +146,6 @@ func (p *Provisioner) Build(base *config.Base) (*storage.State, error) {
 		if err != nil {
 			return nil, err
 		}
-		fmt.Println("Got status")
 
 		for _, r := range stat.Reservations {
 			for _, i := range r.Instances {
@@ -158,8 +159,6 @@ func (p *Provisioner) Build(base *config.Base) (*storage.State, error) {
 		if time.Since(start) > maxWaitTime {
 			return nil, fmt.Errorf("timed out waiting for instance after %s", maxWaitTime)
 		}
-
-		time.Sleep(time.Second * 3)
 	}
 }
 
