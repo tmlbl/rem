@@ -47,6 +47,32 @@ func main() {
 		},
 	}
 
+	destroy := &cobra.Command{
+		Use: "destroy",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load(defaultConfigPath())
+			if err != nil {
+				return err
+			}
+
+			db := storage.Default()
+
+			state, err := db.GetState(defaultConfigPath())
+			if err != nil {
+				return err
+			}
+
+			provisioner, err := provision.GetProvisioner(cfg.Platform)
+			if err != nil {
+				return err
+			}
+
+			return provisioner.Destroy(state)
+		},
+	}
+
+	root.AddCommand(destroy)
+
 	err := root.Execute()
 	if err != nil {
 		log.Fatalln(err)

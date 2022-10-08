@@ -12,6 +12,7 @@ import (
 // service
 type Provisioner interface {
 	Build(base *config.Base) (*storage.State, error)
+	Destroy(*storage.State) error
 }
 
 func GetProvisioner(name config.Platform) (Provisioner, error) {

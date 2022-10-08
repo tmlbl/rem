@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -14,7 +15,18 @@ import (
 	"github.com/tmlbl/rem/storage"
 )
 
+var maxWaitTime = time.Minute * 3
+
 type Provisioner struct{}
+
+func getEC2Client() (*ec2.Client, error) {
+	cfg, err := awsconfig.LoadDefaultConfig(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	svc := ec2.NewFromConfig(cfg)
+	return svc, nil
+}
 
 func (p *Provisioner) getAMI(base *config.Base, svc *ec2.Client) (string, error) {
 	// If it's already an AMI ID, just use that
@@ -88,11 +100,10 @@ func (p *Provisioner) ensureSecurityGroup(ctx context.Context, svc *ec2.Client) 
 }
 
 func (p *Provisioner) Build(base *config.Base) (*storage.State, error) {
-	cfg, err := awsconfig.LoadDefaultConfig(context.Background())
+	svc, err := getEC2Client()
 	if err != nil {
 		return nil, err
 	}
-	svc := ec2.NewFromConfig(cfg)
 
 	ami, err := p.getAMI(base, svc)
 	if err != nil {
@@ -118,9 +129,49 @@ func (p *Provisioner) Build(base *config.Base) (*storage.State, error) {
 
 	inst := out.Instances[0]
 
-	return &storage.State{
+	state := &storage.State{
 		InstanceID:  *inst.InstanceId,
 		BaseImageID: *inst.ImageId,
-		IP:          net.ParseIP(*inst.PublicIpAddress),
-	}, nil
+	}
+
+	// Wait for public IP to be available
+	start := time.Now()
+	for {
+		stat, err := svc.DescribeInstances(context.Background(),
+			&ec2.DescribeInstancesInput{
+				InstanceIds: []string{*inst.InstanceId},
+			})
+		if err != nil {
+			return nil, err
+		}
+		fmt.Println("Got status")
+
+		for _, r := range stat.Reservations {
+			for _, i := range r.Instances {
+				if i.PublicIpAddress != nil {
+					state.IP = net.ParseIP(*i.PublicIpAddress)
+					return state, nil
+				}
+			}
+		}
+
+		if time.Since(start) > maxWaitTime {
+			return nil, fmt.Errorf("timed out waiting for instance after %s", maxWaitTime)
+		}
+
+		time.Sleep(time.Second * 3)
+	}
+}
+
+func (p *Provisioner) Destroy(state *storage.State) error {
+	svc, err := getEC2Client()
+	if err != nil {
+		return err
+	}
+
+	_, err = svc.TerminateInstances(context.Background(), &ec2.TerminateInstancesInput{
+		InstanceIds: []string{state.InstanceID},
+	})
+
+	return err
 }
